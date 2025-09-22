@@ -4,8 +4,8 @@ import time
 from enum import Enum
 from typing import Any, Dict, Optional
 
-import websocket  # Requires: pip install websocket-client
-from pyee import EventEmitter  # Requires: pip install pyee
+from pyee import EventEmitter
+from websocket import ABNF, WebSocketApp, WebSocketException
 
 from hydrano.types import HydraStatus, hydra_status
 
@@ -19,102 +19,142 @@ class HydraConnection:
         address: Optional[str] = None,
         ws_url: Optional[str] = None,
     ):
-        self._websocket_url = (
-            (ws_url if ws_url else http_url.replace("http", "ws"))
-            + f"/?history={'yes' if history else 'no'}{f'&address={address}' if address else ''}"
-        )
+        """
+        Initializes the HydraConnection for WebSocket communication with a Hydra node.
+
+        :param http_url: The base HTTP URL for the Hydra node.
+        :param event_emitter: Event object for signaling message receipt and status changes.
+        :param history: Optional flag to enable history tracking (default: False).
+        :param address: Optional address parameter for the WebSocket connection.
+        :param ws_url: Optional WebSocket URL; if not provided, derived from http_url.
+        """
+        ws_url = ws_url if ws_url else http_url.replace("http", "ws")
+        history_param = f"history={'yes' if history else 'no'}"
+        address_param = f"&address={address}" if address else ""
+        self._websocket_url = f"{ws_url}/?{history_param}{address_param}"
         self._event_emitter = event_emitter
-        self._status: HydraStatus = HydraStatus.IDLE
+        self._websocket: Optional[WebSocketApp] = None
+        self._status: str = "IDLE"
         self._connected: bool = False
-        self._websocket: Optional[websocket.WebSocketApp] = None
-        self._ws_thread: Optional[threading.Thread] = None
 
     def connect(self) -> None:
-        self._websocket = websocket.WebSocketApp(
+        """
+        Establishes a WebSocket connection to the Hydra node. Sets the status to "CONNECTING" and configures event handlers for WebSocket events. The connection runs in a separate thread using WebSocketApp's run_forever.
+        """
+        self._websocket = WebSocketApp(
             self._websocket_url,
             on_open=self._on_open,
             on_message=self._on_message,
             on_error=self._on_error,
-            on_close=self._on_close,
+            on_close=self._on_close
         )
-        self._status = HydraStatus.CONNECTING
+        self._status = "CONNECTING"
+        self._websocket.run_forever()
+    
+    def send(self, data: Any) -> None:
+        """
+        Sends a payload to the Hydra node over the WebSocket connection.
+        Attempts to send the data immediately if the connection is open. If not, retries every second for up to 5 seconds before timing out.
 
-        # Run WebSocket in a separate thread to avoid blocking
-        self._ws_thread = threading.Thread(
-            target=self._websocket.run_forever, daemon=True
-        )
-        self._ws_thread.start()
+        :param data: The data to send (will be JSON-serialized).
+        """
+        send_success = False
 
-    def _on_open(self, ws: websocket.WebSocketApp) -> None:
+        def send_data() -> bool:
+            if self._websocket and self._websocket.sock and self._websocket.sock.connected:
+                self._websocket.send(json.dumps(data), opcode=ABNF.OPCODE_TEXT)
+                return True
+            return False
+
+        if send_data():
+            send_success = True
+            return
+
+        start_time = time.time()
+        while not send_success and (time.time() - start_time) < 5:
+            if send_data():
+                send_success = True
+                break
+            time.sleep(1)
+
+        if not send_success:
+            print(f"Websocket failed to send {data}")
+
+    def disconnect(self) -> None:
+        """
+        Closes the WebSocket connection and sets the status to "IDLE".
+        If the connection is already idle, this is a no-op. Uses code 1007 to close the connection.
+        """
+        if self._status == "IDLE":
+            return
+        if self._websocket and self._websocket.sock and self._websocket.sock.connected:
+            self._websocket.close(status=1007)
+        self._status = "IDLE"
+        self._connected = False
+    
+    def process_status(self, message: Dict[str, Any]) -> None:
+        """
+        Processes a message to update the connection status.
+        If the message contains a valid Hydra status, updates the internal status and emits an 'onstatuschange' event with the new status.
+
+        :param message: The message received from the Hydra node.
+        """
+        status = hydra_status(message)
+        if status:
+            self._status = status
+            self._event_emitter.emit("onstatuschange", status)
+    
+    def _on_open(self, ws: WebSocketApp) -> None:
+        """
+        Handles the WebSocket connection opening.
+        Sets the connection status to "CONNECTED" and marks the connection as active.
+
+        :param ws: The WebSocketApp instance.
+        """
         self._connected = True
-        self._status = HydraStatus.CONNECTED
+        self._status = "CONNECTED"
         print("WebSocket connected successfully")
+    
+    def _on_message(self, ws: WebSocketApp, message: str) -> None:
+        """
+        Handles incoming WebSocket messages.
 
-    def _on_error(self, ws: websocket.WebSocketApp, error: Exception) -> None:
-        print(f"Hydra error: {error}")
-        self._connected = False
+        Parses the message, logs it, and emits an 'onmessage' event with the parsed data.
+        Also processes the message for status updates.
 
-    def _on_close(
-        self, ws: websocket.WebSocketApp, close_status_code: int, close_msg: str
-    ) -> None:
-        print(f"Hydra websocket closed: code={close_status_code}, reason={close_msg}")
-        self._status = HydraStatus.DISCONNECTED
-        self._connected = False
-
-    def _on_message(self, ws: websocket.WebSocketApp, message: str) -> None:
+        :param ws: The WebSocketApp instance.
+        :param message: The received message string.
+        """
         try:
             message_data = json.loads(message)
             print(f"Received message from Hydra: {message_data}")
             self._event_emitter.emit("onmessage", message_data)
-            self._process_status(message_data)
+            self.process_status(message_data)
         except json.JSONDecodeError as e:
             print(f"Failed to parse message: {e}")
 
-    def send(self, data: Any) -> None:
-        send = False
+    def _on_error(self, ws: WebSocketApp, error: WebSocketException) -> None:
+        """
+        Handles WebSocket errors.
 
-        def send_data() -> bool:
-            if self._websocket and self._connected and self._websocket.sock:
-                try:
-                    self._websocket.send(json.dumps(data))
-                    return True
-                except Exception as e:
-                    print(f"Failed to send data: {e}")
-                    return False
-            return False
+        Logs the error and marks the connection as inactive.
 
-        # Try sending immediately
-        if send_data():
-            return
-
-        # Retry sending every second for up to 5 seconds
-        start_time = time.time()
-        while not send and time.time() - start_time < 5:
-            if send_data():
-                send = True
-                break
-            time.sleep(1)
-
-        if not send:
-            print(f"Websocket failed to send {data}")
-
-    def disconnect(self) -> None:
-        if self._status == HydraStatus.IDLE:
-            return
-        if self._websocket and self._connected:
-            try:
-                self._websocket.close()
-            except Exception as e:
-                print(f"Error during disconnect: {e}")
-        self._status = HydraStatus.IDLE
+        :param ws: The WebSocketApp instance.
+        :param error: The WebSocket error.
+        """
+        print(f"Hydra error: {error}")
         self._connected = False
-        self._websocket = None
-        if self._ws_thread:
-            self._ws_thread.join(timeout=1.0)
-            self._ws_thread = None
 
-    def _process_status(self, message: Dict) -> None:
-        status = hydra_status(message)
-        if status is not None:
-            self._status = status
-            self._event_emitter.emit("onstatuschange", status)
+    def _on_close(self, ws: WebSocketApp, close_status_code: Optional[int], close_msg: Optional[str]) -> None:
+        """
+        Handles WebSocket closure.
+
+        Logs the closure details and updates the connection status to "DISCONNECTED".
+
+        :param ws: The WebSocketApp instance.
+        :param close_status_code: The status code for closure.
+        :param close_msg: The closure reason message.
+        """
+        print(f"Hydra websocket closed with code {close_status_code}, reason: {close_msg}")
+        self._status = "DISCONNECTED"
+        self._connected = False
