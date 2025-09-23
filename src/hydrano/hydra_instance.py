@@ -9,7 +9,7 @@ from hydrano.types.hydra_transaction import HydraTransaction
 class HydraInstance:
     def __init__(
         self,
-        hydra_provider: HydraProvider,
+        provider: HydraProvider,
         fetcher: BlockFrostChainContext,
         submitter: BlockFrostChainContext
     ):
@@ -20,7 +20,7 @@ class HydraInstance:
         - fetcher: The fetcher instance for fetching UTxOs and other data. 
         - submitter: The submitter instance for submitting transactions.
         """
-        self.hydra_provider = hydra_provider
+        self.provider = provider
         self.fetcher = fetcher
         self.submitter = submitter
 
@@ -32,6 +32,10 @@ class HydraInstance:
         Returns: The CBOR hex string of the commit transaction.
         Raises: Any exceptions raised by the provider's build_commit method.
         """
+        commit = await self.provider.build_commit(payload=payload, headers={
+            "Content-Type": "application/json",
+        })
+        return commit.get("cborHex")
 
     async def _decommit_from_hydra(self, payload: Any) -> str:
         """

@@ -1,10 +1,11 @@
 import asyncio
+import json
 import time
 from fractions import Fraction
 from typing import Any, Callable, Dict, List, Optional
 
 import requests
-from pycardano import ChainContext, ProtocolParameters, UTxO
+from pycardano import ProtocolParameters, UTxO
 from pyee.asyncio import AsyncIOEventEmitter
 
 from hydrano.hydra_connection import HydraConnection
@@ -14,7 +15,7 @@ from hydrano.types.hydra_utxos import HydraUTxO, to_utxo
 from hydrano.utils.parse_error import parse_error
 
 
-class HydraProvider(ChainContext):
+class HydraProvider:
     """
     Description: 
     - A provider for interacting with Hydra Heads, a layer-2 scaling solution for Cardano.
@@ -203,11 +204,88 @@ class HydraProvider(ChainContext):
         hydra_transaction: HydraTransaction = {
             "type": type,
             "description": description,
-            "cbor_hex": cbor_hex,
-            "tx_id": tx_id,
+            "cborHex": cbor_hex,
+            "txId": tx_id
         }
         payload = {"tag": "NewTx", "transaction": hydra_transaction}
-        self._connection.send(payload)
+        await self._connection.send(payload)
+
+    async def wait_for_tx_response(self, tx: str) -> str:
+        """
+        Description: Internal helper to wait for TxValid or TxInvalid events.
+
+        Args:
+        - tx (str): The transaction CBOR hex to match.
+
+        Returns: The transaction ID if valid.
+        Raises: If the transaction is invalid.
+        """
+        loop = asyncio.get_event_loop()
+        future = loop.create_future()
+        def callback(message: Dict[str, Any]) -> None:
+            if message.get("tag") == "TxValid" and message.get("transaction", {}).get("cborHex") == tx:
+                future.set_result(message["transaction"]["txId"])
+            elif message.get("tag") == "TxInvalid" and message.get("transaction", {}).get("cborHex") == tx:
+                future.set_exception(Exception(json.dumps(message["validationError"])))
+
+        self._event_emitter.on("onmessage", callback)
+        try:
+            return await future
+        finally:
+            self._event_emitter.remove_listener("onmessage", callback)
+
+    async def submit_tx(self, tx: str) -> str:
+        """
+        Description: Submit a transaction to the Hydra node.
+        Unlike other providers, Hydra does not immediately return a transaction hash.
+        This method waits for a TxValid or TxInvalid event to resolve or reject.
+
+        Args:
+        - tx (str): The transaction in CBOR hex format.
+
+        Returns: The transaction ID if valid.
+        Raises: If the transaction is invalid, raises an error with validation details.
+        """
+        try:
+            await self.new_tx(tx, "Witnessed Tx ConwayEra")
+            tx_id = await self.wait_for_tx_response(tx)
+            return tx_id
+        except Exception as error:
+            raise parse_error(error)
+        
+    async def decommit(self, cbor_hex: str, type: str, description: str) -> None:
+        """
+        Description: Request to decommit a UTxO from a Head.
+        Upon reaching consensus, the corresponding transaction outputs will become available on layer 1.
+
+        Args:
+        - cbor_hex (str): The base16-encoded CBOR data of the decommit transaction.
+        - type (str): The transaction type, must be "Tx ConwayEra", "Unwitnessed Tx ConwayEra", or "Witnessed Tx ConwayEra".
+        - description (str): Description of the decommit transaction.
+
+        Returns: None
+        """
+        payload = {
+            "tag": "Decommit",
+            "decommitTx": {
+                "type": type,
+                "description": description,
+                "cborHex": cbor_hex
+            }
+        }
+        await self._connection.send(payload)
+
+    def build_commit(self, payload: Any, headers: Dict[str, str] = {}) -> str:
+        """
+        Description: Draft a commit transaction for submission to the layer 1 network.
+
+        Arguments:
+        - payload (Any): The data to send in the POST request.
+        - headers (Dict[str, str], optional): Additional HTTP headers. Defaults to {}.
+
+        Returns: The transaction in CBOR hex format.
+        """
+        return self.post("commit", payload=payload, headers=headers)
 
     def on_message(self, callback: Callable[[Dict[str, Any]], None]):
         """
