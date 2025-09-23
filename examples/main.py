@@ -8,7 +8,7 @@ def main():
     print("✅ Connected")
 
     print("📦 Fetching snapshot UTxOs...")
-    utxos = provider.subscribe_snapshot_utxo()
+    utxos = provider.subscribe_protocol_parameters()
     print("UTxOs:", utxos)
 
 

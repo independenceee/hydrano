@@ -3,7 +3,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional
 
 import requests
-from pycardano import ChainContext, UTxO
+from pycardano import ChainContext, ProtocolParameters, UTxO
 from pyee.asyncio import AsyncIOEventEmitter
 
 from hydrano.hydra_connection import HydraConnection
@@ -101,18 +101,15 @@ class HydraProvider(ChainContext):
         Returns: List[UTxO]: A list of UTxOs from the snapshot.
         """
         response = self.get("snapshot/utxo")
-        print(response)
         utxos: List[UTxO] = []
         for ref, data in response.items():
-            print(ref)
-            print(data)
             hydra_utxo = HydraUTxO(
                 address=data.get("address"),
                 datum=data.get("datum"),
-                datumhash=data.get("datumhash"),
+                datum_hash=data.get("datumhash"),
                 inline_datum=data.get("inlineDatum"),
                 inline_datum_raw=data.get("inlineDatumRaw"),
-                inline_datumhash=data.get("inlineDatumhash"),
+                inline_datum_hash=data.get("inlineDatumhash"),
                 value=data.get("value"),
             )
             utxo = to_utxo(hydra_utxo, ref)
@@ -120,17 +117,25 @@ class HydraProvider(ChainContext):
 
         return utxos
 
-    def fetch_utxos(self, tx_hash: Optional[str] = None, output_index: Optional[str] = None) -> List[UTxO]:
+    def fetch_utxos(self, transaction_id: Optional[str] = None, index: Optional[int] = None) -> List[UTxO]:
         """
         Description: Fetch UTxOs from the Hydra node's snapshot, optionally filtered by hash and index.
 
         Args:
-        - hash (str, optional): The transaction hash to filter UTxOs. Defaults to None.
+        - transaction_id (str, optional): The transaction hash to filter UTxOs. Defaults to None.
         - index (int, optional): The output index to filter UTxOs. Defaults to None.
 
         Returns: 
         - List[UTxO]: A list of unspent transaction outputs matching the criteria.
         """
+        snapshot_utxos = self.subscribe_snapshot_utxo()
+        outputs = [
+            utxo for utxo in snapshot_utxos
+            if transaction_id is None or utxo.input.transaction_id == transaction_id
+        ]
+        if index is not None:
+            outputs = [utxo for utxo in outputs if utxo.input.index == index]
+        return outputs
 
     def fetch_address_utxos(self, address: str) -> List[UTxO]:
         """
@@ -140,9 +145,17 @@ class HydraProvider(ChainContext):
         Returns:
         - List[UTxO]: A list of unspent transaction outputs for the given address.
         """
-        return self.utxos(address=address)
+        utxos = self.fetch_utxos()
+        return [utxo for utxo in utxos  if str(utxo.output.address) == address]
     
-
+    def subscribe_protocol_parameters(self) ->  ProtocolParameters:
+        """
+        Description: Fetch protocol parameters from the Hydra node.
+        Returns:
+        - Protocol: The protocol parameters mapped to the Protocol type.
+        """
+        data = self.get("protocol-parameters")
+        print(data)
 
     async def new_tx(self, cbor_hex: str, type: str, description: str = "", tx_id: Optional[str] = None) -> None:
         """

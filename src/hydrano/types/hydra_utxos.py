@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from pycardano import DatumHash, PlutusData, TransactionInput, TransactionOutput, UTxO
+from pycardano import PlutusData, TransactionInput, TransactionOutput, UTxO, datum_hash
 
 from hydrano.types.hydra_assets import HydraAssets, hydra_assets, to_assets
 from hydrano.types.hydra_reference_script import (
@@ -16,10 +16,10 @@ class HydraUTxO:
     address: str
     value: HydraAssets
     datum: Optional[str] = None,
-    datumhash: Optional[str] = None,
+    datum_hash: Optional[str] = None,
     inline_datum: Optional[Any] = None,
     inline_datum_raw: Optional[str] = None,
-    inline_datumhash: Optional[str]= None,
+    inline_datum_hash: Optional[str]= None,
     reference_script: Optional[HydraReferenceScript] = None
 
 HydraUTxOs = Dict[str, HydraUTxO]
@@ -40,10 +40,10 @@ async def hydra_utxo(utxo: UTxO) -> HydraUTxO:
     return HydraUTxO(
         address=utxo.output.address,
         datum=None,  
-        datumhash=None,  
+        datum_hash=None,  
         inline_datum=inline_datum,
         inline_datum_raw=inline_datum_raw,
-        inline_datumhash=str(utxo.output.datum_hash) if utxo.output.datum_hash else None,
+        inline_datum_hash=str(utxo.output.datum_hash) if utxo.output.datum_hash else None,
         reference_script=await hydra_reference_script(str(utxo.output.script) if utxo.output.script else None),
         value=hydra_assets(utxo.output.value)
     )
@@ -85,7 +85,7 @@ def to_utxo(hydra_utxo: HydraUTxO, tx_id: str) -> UTxO:
         output=TransactionOutput(
             address=hydra_utxo.address,
             amount=to_assets(hydra_utxo.value),
-            datum_hash=hydra_utxo.inline_datum if hydra_utxo.inline_datumhash else None,
+            datum_hash=hydra_utxo.inline_datum if hydra_utxo.inline_datum_hash else None,
             datum=hydra_utxo.inline_datum_raw,
             script=script_reference
         )
