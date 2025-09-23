@@ -14,13 +14,13 @@ from hydrano.utils.datum import parse_datum_cbor
 @dataclass
 class HydraUTxO:
     address: str
-    datum: Optional[str]
-    datumhash: Optional[str]
-    inline_datum: Optional[Any]
-    inline_datum_raw: Optional[str]
-    inline_datumhash: Optional[str]
-    reference_script: Optional[HydraReferenceScript]
     value: HydraAssets
+    datum: Optional[str] = None,
+    datumhash: Optional[str] = None,
+    inline_datum: Optional[Any] = None,
+    inline_datum_raw: Optional[str] = None,
+    inline_datumhash: Optional[str]= None,
+    reference_script: Optional[HydraReferenceScript] = None
 
 HydraUTxOs = Dict[str, HydraUTxO]
 
@@ -39,8 +39,8 @@ async def hydra_utxo(utxo: UTxO) -> HydraUTxO:
     
     return HydraUTxO(
         address=utxo.output.address,
-        datum=None,  # Not used in TypeScript version
-        datumhash=None,  # Not used in TypeScript version
+        datum=None,  
+        datumhash=None,  
         inline_datum=inline_datum,
         inline_datum_raw=inline_datum_raw,
         inline_datumhash=str(utxo.output.datum_hash) if utxo.output.datum_hash else None,
@@ -85,8 +85,8 @@ def to_utxo(hydra_utxo: HydraUTxO, tx_id: str) -> UTxO:
         output=TransactionOutput(
             address=hydra_utxo.address,
             amount=to_assets(hydra_utxo.value),
-            datum_hash=DatumHash.from_cbor(hydra_utxo.inline_datum) if hydra_utxo.inline_datumhash else None,
-            datum=PlutusData.from_cbor(hydra_utxo.inline_datum_raw),
+            datum_hash=hydra_utxo.inline_datum if hydra_utxo.inline_datumhash else None,
+            datum=hydra_utxo.inline_datum_raw,
             script=script_reference
         )
     )

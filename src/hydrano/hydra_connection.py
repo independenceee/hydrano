@@ -49,7 +49,7 @@ class HydraConnection:
             on_close=self._on_close
         )
         self._status = "CONNECTING"
-        self._websocket.run_forever()
+        # self._websocket.run_forever()
     
     def send(self, data: Any) -> None:
         """

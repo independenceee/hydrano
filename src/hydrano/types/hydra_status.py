@@ -3,7 +3,6 @@ from typing import Any, Dict, Optional
 
 
 class HydraStatus(Enum):
-
     IDLE = "IDLE"
     DISCONNECTED = "DISCONNECTED"
     CONNECTING = "CONNECTING"

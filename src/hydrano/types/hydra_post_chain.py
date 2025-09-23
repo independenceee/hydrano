@@ -66,7 +66,7 @@ class FanoutTx:
     head_seed: str
     contestation_deadline: str
 
-# Định nghĩa PostChainTx như một Union type
+
 PostChainTx = Union[
     InitTx,
     AbortTx,
