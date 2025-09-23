@@ -1,6 +1,5 @@
 import asyncio
 import json
-import time
 from fractions import Fraction
 from typing import Any, Callable, Dict, List, Optional
 
@@ -9,7 +8,7 @@ from pycardano import ProtocolParameters, UTxO
 from pyee.asyncio import AsyncIOEventEmitter
 
 from hydrano.connections.hydra_connection import HydraConnection
-from hydrano.types.hydra_status import HydraStatus
+from hydrano.types.hydra_status import HydraStatus, hydra_status
 from hydrano.types.hydra_transaction import HydraTransaction
 from hydrano.types.hydra_utxos import HydraUTxO, to_utxo
 from hydrano.utils.parse_error import parse_error
@@ -23,8 +22,8 @@ class HydraProvider:
     - It also manages Hydra Head lifecycle commands and processes events from the node using pyee.
 
     Usage:
-    - provider = HydraProvider(http_url="http://123.45.67.890:4001")
-        asyncio.run(provider.connect())
+    hydra_provider = HydraProvider(http_url="http://123.45.67.890:4001")
+    asyncio.run(provider.connect())
     """
     def __init__(
         self,
@@ -55,48 +54,59 @@ class HydraProvider:
         self._session = requests.Session()
         self._status_callbacks = []
 
-    async def init(self):
-        """
-        Initializes a new Hydra Head. This is a no-op if a Head is already open.
-        """
-        self._connection.send({"tag": "Init"})
-    
-    async def abort(self):
-        """
-        Aborts a Hydra Head before it is opened. Can only be done before all participants have committed.
-        """
-        self._connection.send({"tag": "Abort"})
-    
-    async def close(self):
-        """
-        Closes the Hydra Head, starting the contestation phase.
-        """
-        self._connection.send({"tag": "Close"})
-    
-    async def contest(self):
-        """
-        Contests the latest snapshot after head closure.
-        """
-        self._connection.send({"tag": "Contest"})
-
-    async def fanout(self):
-        """
-        Finalizes the Hydra Head after the contestation period.
-        """
-        self._connection.send({"tag": "Fanout"})
-
-    async def connect(self):
+    # DONE
+    def connect(self):
         """
         Description: Connect to the Hydra node via WebSocket.
         Establishes a WebSocket connection if not already connected.
         This is a no-op if a connection already exists.
-        Returns: None
+        Raises: If the WebSocket connection fails.
         """
         if self._status != HydraStatus.DISCONNECTED:
             return
         self._connection.connect()
         self._status = HydraStatus.CONNECTED
 
+    # DONE
+    def init(self):
+        """
+        Description: Initializes a new Hydra Head. This is a no-op if a Head is already open.
+        Note: Sends an 'Init' command to the Hydra node. May result in a CommandFailed event if a Head is already open.
+        """
+        self._connection.send({"tag": "Init"})
+    
+    # DONE
+    def abort(self):
+        """
+        Description: Aborts a Hydra Head before it is opened. Can only be done before all participants have committed.
+        Note: Sends an 'Abort' command to the Hydra node.
+        """
+        self._connection.send({"tag": "Abort"})
+    
+    # DONE
+    def close(self):
+        """
+        Description: Closes a Hydra Head, moving it to the Close state and starting the contestation phase.
+        Note: No further transactions can be submitted via newTx after closing.
+        """
+        self._connection.send({"tag": "Close"})
+    
+    # DONE
+    def contest(self):
+        """
+        Description: Challenges the latest snapshot announced during head closure.
+        Note: Participants can only contest once, using the latest local snapshot.
+        """
+        self._connection.send({"tag": "Contest"})
+
+    # DONE
+    def fanout(self):
+        """
+        Description: Finalizes a Hydra Head after the contestation period, distributing the final state to layer 1.
+        """
+        self._connection.send({"tag": "Fanout"})
+
+    # DONE
     def subscribe_snapshot_utxo(self) -> List[UTxO]:
         """
         Description: Fetch a set of unspent transaction outputs from the snapshot.
@@ -130,7 +140,7 @@ class HydraProvider:
         Returns: 
         - List[UTxO]: A list of unspent transaction outputs matching the criteria.
         """
-        snapshot_utxos = self.subscribe_snapshot_utxo()
+        snapshot_utxos: List[UTxO] = self.subscribe_snapshot_utxo()
         outputs = [
             utxo for utxo in snapshot_utxos
             if transaction_id is None or utxo.input.transaction_id == transaction_id
@@ -150,6 +160,17 @@ class HydraProvider:
         utxos = self.fetch_utxos()
         return [utxo for utxo in utxos  if str(utxo.output.address) == address]
     
+    def fetch_protocol_parameters(self, epoch: Optional[float] = None) -> ProtocolParameters:
+        """
+        Description: Fetches the latest protocol parameters from the Hydra node.
+        Arguments:
+        - epoch (float, optional): The epoch number to query (defaults to None, uses latest).
+        Returns: The protocol parameters for the specified or latest epoch.
+        Note: Delegates to subscribeProtocolParameters for implementation.
+        """
+        return self.subscribe_protocol_parameters()
+
+    # DONE
     def subscribe_protocol_parameters(self) ->  ProtocolParameters:
         """
         Description: Fetch protocol parameters from the Hydra node.
@@ -189,6 +210,7 @@ class HydraProvider:
         )
         return protocol_params
 
+    # TODO
     async def new_tx(self, cbor_hex: str, type: str, description: str = "", tx_id: Optional[str] = None) -> None:
         """
         Description: Submits a transaction through the Hydra Head. The transaction is only broadcast if well-formed and valid.
@@ -207,7 +229,10 @@ class HydraProvider:
             "cborHex": cbor_hex,
             "txId": tx_id
         }
-        payload = {"tag": "NewTx", "transaction": hydra_transaction}
+        payload = {
+            "tag": "NewTx", 
+            "transaction": hydra_transaction
+        }
         await self._connection.send(payload)
 
     async def wait_for_tx_response(self, tx: str) -> str:
@@ -253,7 +278,8 @@ class HydraProvider:
         except Exception as error:
             raise parse_error(error)
         
-    async def decommit(self, cbor_hex: str, type: str, description: str) -> None:
+    # DONE
+    def decommit(self, cbor_hex: str, type: str, description: str) -> None:
         """
         Description: Request to decommit a UTxO from a Head.
         Upon reaching consensus, the corresponding transaction outputs will become available on layer 1.
@@ -273,8 +299,9 @@ class HydraProvider:
                 "cborHex": cbor_hex
             }
         }
-        await self._connection.send(payload)
+        self._connection.send(payload)
 
+    # DONE
     def build_commit(self, payload: Any, headers: Dict[str, str] = {}) -> str:
         """
         Description: Draft a commit transaction for submission to the layer 1 network.
@@ -287,6 +314,7 @@ class HydraProvider:
         """
         return self.post("commit", payload=payload, headers=headers)
 
+    # DONE
     def publish_decommit(self, payload: Any, headers: Dict[str, str] ={}) -> str:
         """
         Description: Publishing the uncommitted transaction applied to Hydra's local ledger state.
@@ -300,20 +328,38 @@ class HydraProvider:
         """
         return self.post("decommit", payload=payload, headers=headers)
 
-    def on_message(self, callback: Callable[[Dict[str, Any]], None]):
+    # DONE
+    def on_message(self, callback: Callable[[Any], None]):
         """
-        Registers a callback for handling incoming messages.
-        :param callback: The function to call when a message is received.
+        Description: Registers a callback for handling incoming messages.
+        Arguments:
+        - callback (Callable): Function to handle events like Greetings, TxValid, etc.
+        Note: Events are dispatched based on their tag. The callback is called with the event object.
         """
-        
-    def on_status_change(self, callback: Callable[[HydraStatus], None]) -> None:
+        def handle_message(message):
+            tag = getattr(message, 'tag', None)
+            if tag in [
+                "Greetings", "PeerConnected", "onPeerDisconnected", "PeerHandshakeFailure",
+                "HeadIsInitializing", "Committed", "HeadIsOpen", "HeadIsClosed",
+                "HeadIsContested", "ReadyToFanout", "HeadIsAborted", "HeadIsFinalized",
+                "TxValid", "TxInvalid", "SnapshotConfirmed", "GetUTxOResponse",
+                "InvalidInput", "PostTxOnChainFailed", "CommandFailed", "IgnoredHeadInitializing",
+                "DecommitInvalid", "DecommitRequested", "DecommitApproved", "DecommitFinalized"
+            ]:
+                callback(message)
+        self._eventEmitter.on("onmessage", handle_message)   
+
+    # DONE
+    def on_status_change(self, callback: Callable[[hydra_status], None]) -> None:
         """
         Description: Registers a callback to handle changes in the Hydra node's connection status.
         Arguments: 
         - callback (Callable): The callback function to be called when the status changes.
         Returns: None
         """
+        self._event_emitter.on("onstatuschange", callback)
 
+    # DONE
     def get(self, url: str) -> Any:
         """
         Description: Perform a generic HTTP GET request to the Hydra node.
@@ -323,14 +369,17 @@ class HydraProvider:
         Raises: If the request fails or the server returns an error.
         """
         try:
-            response  = self._session.get(f"{self._http_url}/{url}")
+            response = self._session.get(
+                url=f"{self._http_url}/{url}"
+            )
             if response.status_code in (200, 202):
                 return response.json()
             raise parse_error(response.json())
         except Exception as error:
             raise parse_error(error)
     
-    async def post(self, url: str, payload: Any, headers: Dict[str, str] = {}) -> Any:
+    # DONE
+    def post(self, url: str, payload: Any, headers: Dict[str, str] = {}) -> Any:
         """
         Description: Perform a generic HTTP POST request to the Hydra node.
 
@@ -343,7 +392,11 @@ class HydraProvider:
         Raises: If the HTTP request fails or returns an error status.
         """
         try:
-            response = self._session.post(f"{self._http_url}/{url}", json=payload, headers=headers)
+            response = self._session.post(
+                url=f"{self._http_url}/{url}", 
+                json=payload, 
+                headers=headers
+            )
             if response.status_code in (200, 202):
                 return response.json()
             raise parse_error(response.json())

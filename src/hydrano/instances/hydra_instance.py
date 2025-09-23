@@ -1,15 +1,16 @@
-from typing import Any
+from typing import Any, List
+
+from pycardano import UTxO
 
 from hydrano.interfaces import IFetcher, ISubmitter
 from hydrano.providers import HydraProvider
-from hydrano.types.hydra_transaction import HydraTransaction
-from hydrano.types.hydra_utxos import HydraUTxO
+from hydrano.types import HydraTransaction, HydraUTxO
 
 
 class HydraInstance:
     def __init__(
         self,
-        provider: HydraProvider,
+        hydra_provider: HydraProvider,
         fetcher: IFetcher,
         submitter: ISubmitter,
     ):
@@ -20,7 +21,7 @@ class HydraInstance:
         - fetcher: The fetcher instance for fetching UTxOs and other data. 
         - submitter: The submitter instance for submitting transactions.
         """
-        self.provider = provider
+        self.hydra_provider = hydra_provider
         self.fetcher = fetcher
         self.submitter = submitter
 
@@ -32,7 +33,7 @@ class HydraInstance:
         Returns: The CBOR hex string of the commit transaction.
         Raises: Any exceptions raised by the provider's build_commit method.
         """
-        commit = await self.provider.build_commit(payload=payload, headers={
+        commit = await self.hydra_provider.build_commit(payload=payload, headers={
             "Content-Type": "application/json",
         })
         return commit.get("cborHex")
@@ -45,7 +46,7 @@ class HydraInstance:
         Returns: The result of the decommit operation (e.g., CBOR hex string).
         Raises: Any exceptions raised by the provider's publish_decommit method.
         """
-        decommit = await self.provider.publish_decommit(payload=payload, headers={
+        decommit = await self.hydra_provider.publish_decommit(payload=payload, headers={
             "Content-Type": "application/json",
         })
         return decommit
@@ -59,7 +60,7 @@ class HydraInstance:
         Returns: The CBOR hex string of the commit transaction, ready to be partially signed.
         Raises:  If the specified UTxO is not found.
         """
-        utxos = await self.fetcher.fetch_utxos(transaction_id=transaction_id, index=index)
+        utxos: List[UTxO] = await self.fetcher.fetch_utxos(transaction_id=transaction_id, index=index)
         if not utxos:
             raise Exception("UTxO not found")
         utxo = utxos[0]
@@ -83,7 +84,7 @@ class HydraInstance:
         """
         return await self.commit_funds(tx_hash, output_index)
     
-    async def commit_blueprint(self, tx_hash: str, output_index: int, transaction: HydraTransaction) -> str:
+    async def commit_blueprint(self, transaction_id: str, index: int, transaction: HydraTransaction) -> str:
         """
         Description: Commits a Cardano transaction blueprint to the Hydra head.
         This method allows committing a transaction in the Cardano text envelope format
@@ -106,7 +107,7 @@ class HydraInstance:
         Raises: If the specified UTxO is not found.
         """
 
-    async def incremental_blueprint_commit(self, tx_hash: str, output_index: int, transaction: HydraTransaction) -> str:
+    async def incremental_blueprint_commit(self, transaction_id: str, index: int, transaction: HydraTransaction) -> str:
         """
         Description: Incrementally commits a Cardano transaction blueprint to the Hydra head.
 
@@ -118,8 +119,8 @@ class HydraInstance:
         See: https://hydra.family/head-protocol/docs/how-to/commit-blueprint
 
         Args:
-            - tx_hash (str): The transaction hash of the UTxO to be committed as a blueprint.
-            - output_index (int): The output index of the UTxO to be committed.
+            - transaction_id (str): The transaction hash of the UTxO to be committed as a blueprint.
+            - index (int): The output index of the UTxO to be committed.
             - transaction (hydraTransaction): The Cardano transaction in text envelope format, containing:
                 - type: The type of the transaction (e.g., "Unwitnessed Tx ConwayEra").
                 - description: (Optional) A human-readable description of the transaction.
@@ -129,7 +130,7 @@ class HydraInstance:
 
         Raises: If the specified UTxO is not found.
         """
-        return await self.commit_blueprint(tx_hash, output_index, {
+        return await self.commit_blueprint(transaction_id=transaction_id, index=index, transaction= {
             "type": transaction.type,
             "cborHex": transaction.cbor_hex,
             "description": transaction.description,

@@ -1,9 +1,9 @@
 import asyncio
 
-from hydrano.providers.hydra_provider import HydraProvider
+from hydrano.providers import HydraProvider
 
 
-async def main():
+def main():
     http_url = "http://194.195.87.66:4001"
     provider = HydraProvider(http_url=http_url)
     print("🔌 Connecting to Hydra node...")
@@ -11,11 +11,11 @@ async def main():
 
     # Gọi thử Init (nếu head chưa mở)
     print("📢 Sending Init command...")
-    await provider.connect()
-    await provider.contest()
+    provider.connect()
+    provider.init()
 
     print("📦 Fetching snapshot UTxOs...")
     # print("UTxOs:", utxos)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

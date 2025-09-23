@@ -10,7 +10,7 @@ class ISubmitter:
     """
 
     @abstractmethod
-    async def submit_tx(self, tx: str) -> str:
+    def submit_tx(self, tx: str) -> str:
         """
         Description: Submit a signed transaction to the network.
 
