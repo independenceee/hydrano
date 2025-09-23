@@ -3,6 +3,7 @@ from typing import Any
 from hydrano.interfaces import IFetcher, ISubmitter
 from hydrano.providers import HydraProvider
 from hydrano.types.hydra_transaction import HydraTransaction
+from hydrano.types.hydra_utxos import HydraUTxO
 
 
 class HydraInstance:
@@ -58,8 +59,14 @@ class HydraInstance:
         Returns: The CBOR hex string of the commit transaction, ready to be partially signed.
         Raises:  If the specified UTxO is not found.
         """
-        self.fetcher.fetch_utxos()
-
+        utxos = await self.fetcher.fetch_utxos(transaction_id=transaction_id, index=index)
+        if not utxos:
+            raise Exception("UTxO not found")
+        utxo = utxos[0]
+        hydra_utxo = await HydraUTxO(
+            address=str(utxo.output.address)
+        )
+        return await self.__commit_to_hydra({f"{transaction_id}#{index}": hydra_utxo})
 
     async def incremental_commit_funds(self, tx_hash: str, output_index: int) -> str:
         """
