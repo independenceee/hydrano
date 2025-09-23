@@ -1,8 +1,7 @@
 from typing import Any
 
-from pycardano import BlockFrostChainContext
-
-from hydrano.hydra_provider import HydraProvider
+from hydrano.interfaces import IFetcher, ISubmitter
+from hydrano.providers import HydraProvider
 from hydrano.types.hydra_transaction import HydraTransaction
 
 
@@ -10,8 +9,8 @@ class HydraInstance:
     def __init__(
         self,
         provider: HydraProvider,
-        fetcher: BlockFrostChainContext,
-        submitter: BlockFrostChainContext
+        fetcher: IFetcher,
+        submitter: ISubmitter,
     ):
         """
         Desc: Represents an instance of the Hydra protocol, providing methods to interact with a Hydra head.
@@ -24,7 +23,7 @@ class HydraInstance:
         self.fetcher = fetcher
         self.submitter = submitter
 
-    async def _commit_to_hydra(self, payload: Any) -> str:
+    async def __commit_to_hydra(self, payload: Any) -> str:
         """
         Description: Private method to build and commit a payload to the Hydra head.
         Arguments: 
@@ -37,7 +36,7 @@ class HydraInstance:
         })
         return commit.get("cborHex")
 
-    async def _decommit_from_hydra(self, payload: Any) -> str:
+    async def __decommit_from_hydra(self, payload: Any) -> str:
         """
         Description: Private method to publish a decommit request to the Hydra head.
         Arguments: 
@@ -45,17 +44,23 @@ class HydraInstance:
         Returns: The result of the decommit operation (e.g., CBOR hex string).
         Raises: Any exceptions raised by the provider's publish_decommit method.
         """
+        decommit = await self.provider.publish_decommit(payload=payload, headers={
+            "Content-Type": "application/json",
+        })
+        return decommit
 
-    async def commit_funds(self, tx_hash: str, output_index: int) -> str:
-         """
+    async def commit_funds(self, transaction_id: str, index: int) -> str:
+        """
         Description: Commits funds to the Hydra head by selecting a UTxO to make available on layer 2.
         Arguments: 
-        - tx_hash (str): The transaction hash of the UTxO to commit. 
-        - output_index (int): The output index of the UTxO to commit.
+        - transaction_id (str): The transaction hash of the UTxO to commit. 
+        - index (int): The output index of the UTxO to commit.
         Returns: The CBOR hex string of the commit transaction, ready to be partially signed.
         Raises:  If the specified UTxO is not found.
         """
-         
+        self.fetcher.fetch_utxos()
+
+
     async def incremental_commit_funds(self, tx_hash: str, output_index: int) -> str:
         """
         Description: Incrementally commits funds to the Hydra head by selecting a UTxO to make available on layer 2.
@@ -137,6 +142,7 @@ class HydraInstance:
 
         Raises: Any exceptions raised by the provider's publish_decommit method.
         """
+        return self.__decommit_from_hydra(payload=transaction)
 
     async def incremental_decommit(self, transaction: HydraTransaction) -> str:
         """

@@ -2,7 +2,6 @@
 import json
 import threading
 import time
-from enum import Enum
 from typing import Any, Dict, Optional
 
 from pyee import EventEmitter

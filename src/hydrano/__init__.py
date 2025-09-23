@@ -1,2 +1,2 @@
-from hydrano.hydra_instance import *
-from hydrano.hydra_provider import HydraProvider
+from hydrano.instances.hydra_instance import *
+from hydrano.providers.hydra_provider import HydraProvider

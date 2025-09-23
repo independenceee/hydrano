@@ -1,6 +1,6 @@
 import asyncio
 
-from hydrano.hydra_provider import HydraProvider
+from hydrano.providers.hydra_provider import HydraProvider
 
 
 async def main():
@@ -12,7 +12,7 @@ async def main():
     # Gọi thử Init (nếu head chưa mở)
     print("📢 Sending Init command...")
     await provider.connect()
-    await provider.init()
+    await provider.contest()
 
     print("📦 Fetching snapshot UTxOs...")
     # print("UTxOs:", utxos)

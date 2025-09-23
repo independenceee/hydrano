@@ -8,7 +8,7 @@ import requests
 from pycardano import ProtocolParameters, UTxO
 from pyee.asyncio import AsyncIOEventEmitter
 
-from hydrano.hydra_connection import HydraConnection
+from hydrano.connections.hydra_connection import HydraConnection
 from hydrano.types.hydra_status import HydraStatus
 from hydrano.types.hydra_transaction import HydraTransaction
 from hydrano.types.hydra_utxos import HydraUTxO, to_utxo
@@ -286,6 +286,19 @@ class HydraProvider:
         Returns: The transaction in CBOR hex format.
         """
         return self.post("commit", payload=payload, headers=headers)
+
+    def publish_decommit(self, payload: Any, headers: Dict[str, str] ={}) -> str:
+        """
+        Description: Publishing the uncommitted transaction applied to Hydra's local ledger state.
+        The specified transaction outputs will be available on layer 1 after successful processing.
+
+        Arguments:
+        - payload (Any): Data to send in the POST request.
+        - headers (Dict[str, str], optional): Additional HTTP headers. Defaults to {}.
+
+        Returns: Transaction in CBOR hex format.
+        """
+        return self.post("decommit", payload=payload, headers=headers)
 
     def on_message(self, callback: Callable[[Dict[str, Any]], None]):
         """
