@@ -1,5 +1,6 @@
 import asyncio
 import time
+from fractions import Fraction
 from typing import Any, Callable, Dict, List, Optional
 
 import requests
@@ -155,7 +156,37 @@ class HydraProvider(ChainContext):
         - Protocol: The protocol parameters mapped to the Protocol type.
         """
         data = self.get("protocol-parameters")
-        print(data)
+        protocol_params = ProtocolParameters(
+            min_fee_constant=data.get("txFeeFixed", 0),
+            min_fee_coefficient=data.get("txFeePerByte", 0),
+            max_block_size=data.get("maxBlockBodySize", 0),
+            max_tx_size=data.get("maxTxSize", 0),
+            max_block_header_size=data.get("maxBlockHeaderSize", 0),
+            key_deposit=data.get("stakeAddressDeposit", 0),
+            pool_deposit=data.get("stakePoolDeposit", 0),
+            pool_influence=Fraction(str(data.get("poolPledgeInfluence", 0))),
+            monetary_expansion=Fraction(str(data.get("monetaryExpansion", 0))),
+            treasury_expansion=Fraction(str(data.get("treasuryCut", 0))),
+            decentralization_param=Fraction(0), 
+            extra_entropy="",
+            protocol_major_version=data["protocolVersion"]["major"],
+            protocol_minor_version=data["protocolVersion"]["minor"],
+            min_utxo=data.get("minUTxOValue", 0),
+            min_pool_cost=data.get("minPoolCost", 0),
+            price_mem=Fraction(str(data["executionUnitPrices"].get("priceMemory", 0))),
+            price_step=Fraction(str(data["executionUnitPrices"].get("priceSteps", 0))),
+            max_tx_ex_mem=data["maxTxExecutionUnits"]["memory"],
+            max_tx_ex_steps=data["maxTxExecutionUnits"]["steps"],
+            max_block_ex_mem=data["maxBlockExecutionUnits"]["memory"],
+            max_block_ex_steps=data["maxBlockExecutionUnits"]["steps"],
+            max_val_size=data.get("maxValueSize", 0),
+            collateral_percent=data.get("collateralPercentage", 0),
+            max_collateral_inputs=data.get("maxCollateralInputs", 0),
+            coins_per_utxo_word=0,  
+            coins_per_utxo_byte=data.get("utxoCostPerByte", 0),
+            cost_models=data.get("costModels", {})
+        )
+        return protocol_params
 
     async def new_tx(self, cbor_hex: str, type: str, description: str = "", tx_id: Optional[str] = None) -> None:
         """
