@@ -5,7 +5,7 @@ description = "Lightweight Python toolkit for Cardano Hydra."
 authors = [
     {name = "Nguyen Duy Khanh",email = "nguyenkhanh17112003@gmail.com"}
 ]
-license = "MIT
+license = "MIT"
 homepage = "https://github.com/independenceee/hydrano"
 repository = "https://github.com/independenceee/hydrano"
 readme = "README.md"
