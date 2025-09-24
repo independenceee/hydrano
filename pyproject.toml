@@ -5,8 +5,11 @@ description = "Lightweight Python toolkit for Cardano Hydra."
 authors = [
     {name = "Nguyen Duy Khanh",email = "nguyenkhanh17112003@gmail.com"}
 ]
-license = {text = "MIT"}
+license = "MIT
+homepage = "https://github.com/independenceee/hydrano"
+repository = "https://github.com/independenceee/hydrano"
 readme = "README.md"
+keywords = ["cardano", "hydra", "blockchain", "python", "library"]
 requires-python = ">=3.9.1,<4.0.0"
 
 [tool.poetry.dependencies]
