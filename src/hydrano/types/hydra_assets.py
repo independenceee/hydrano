@@ -19,22 +19,16 @@ def hydra_assets(assets: List[Tuple[str, AssetName, int]]) -> HydraAssets:
         mapping to their total quantities.
     """
     result: HydraAssets = {"lovelace": 0}
-    
-    for policy_id, asset_name, quantity in assets:
-        # Ensure quantity is non-negative
+    for unit, quantity in assets:
         if quantity < 0:
-            raise ValueError(f"Negative quantity for asset {policy_id}{asset_name}: {quantity}")
-        
-        # Construct unit: "lovelace" for ADA, or policy_id + asset_name for tokens
-        asset_name_str = asset_name.decode("utf-8") if asset_name else ""
-        unit = "lovelace" if not policy_id and not asset_name_str else f"{policy_id}{asset_name_str}"
+            raise ValueError(f"Negative quantity for asset {unit}: {quantity}")
+        unit = "lovelace" if not unit else f"{unit}"
         
         result[unit] = result.get(unit, 0) + quantity
     
-    # Remove zero quantities to align with Asset.normalize()
-    return {k: v for k, v in result.items() if v != 0}
+    return {key: value for key, value in result.items() if value != 0}
 
-def to_assets(hydra_assets: HydraAssets) -> List[Tuple[str, AssetName, int]]:
+def to_assets(hydra_assets: HydraAssets) -> dict:
     """
     Convert a hydraAssets dictionary back to a list of (policy_id, asset_name, quantity) tuples.
     
@@ -44,29 +38,31 @@ def to_assets(hydra_assets: HydraAssets) -> List[Tuple[str, AssetName, int]]:
     Returns:
         A list of (policy_id, asset_name, quantity) tuples.
     """
-    assets = []
+    result = {"coin": 0, "multi_asset": {}}
+    
     for unit, quantity in hydra_assets.items():
         if quantity == 0:
-            continue  # Skip zero quantities to align with Asset.normalize()
+            continue
+        if quantity < 0:
+            raise ValueError(f"Negative quantity for unit {unit}: {quantity}")
         
         if unit == "lovelace":
-            policy_id = ""
-            asset_name = AssetName(b"")
+            result["coin"] = quantity
         else:
-            # Assume unit = policy_id (56 chars hex) + asset_name
-            policy_id = unit[:56] if len(unit) >= 56 else ""
-            asset_name_str = unit[56:] if len(unit) > 56 else ""
+            if len(unit) < 56:
+                raise ValueError(f"Invalid unit length: {unit}")
+            policy_id = unit[:56]
+            asset_name = unit[56:]
             try:
-                # Validate policy_id as hex (optional)
-                if policy_id:
-                    bytes.fromhex(policy_id)
-                asset_name = AssetName(asset_name_str.encode("utf-8")) if asset_name_str else AssetName(b"")
+                policy_hash = ScriptHash(bytes.fromhex(policy_id))
+                asset_name_obj = AssetName(asset_name.encode("utf-8")) if asset_name else AssetName(b"")
+                if policy_hash not in result["multi_asset"]:
+                    result["multi_asset"][policy_hash] = {}
+                result["multi_asset"][policy_hash][asset_name_obj] = quantity
             except ValueError:
                 raise ValueError(f"Invalid policy_id in unit: {unit}")
-        
-        assets.append((policy_id, asset_name, quantity))
     
-    return assets
+    return result
 
 def hydra_assets_from_value(value: Value) -> HydraAssets:
     """

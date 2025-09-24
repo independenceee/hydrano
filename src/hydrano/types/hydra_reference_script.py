@@ -17,7 +17,7 @@ class HydraReferenceScript:
     script: dict
 
 
-async def get_reference_script_info(script_ref: Optional[str]) -> HydraScriptInfomation:
+def get_reference_script_info(script_ref: Optional[str]) -> HydraScriptInfomation:
     """
     Determines the type and language of a script reference.
     
@@ -64,13 +64,13 @@ async def get_reference_script_info(script_ref: Optional[str]) -> HydraScriptInf
     )
 
 
-async def hydra_reference_script(script_reference: Optional[str]) -> Optional[HydraReferenceScript]:
+def hydra_reference_script(script_reference: Optional[str]) -> Optional[HydraReferenceScript]:
     """
     Desc: Convert a script reference to a hydraReferenceScript object.
     Args: script_ref: The script reference (e.g., CBOR hex string) from a UTxO, or None.
     Returns: A HydraReferenceScript object or None if script_ref is invalid or missing.
     """
-    info = await get_reference_script_info(script_reference)
+    info = get_reference_script_info(script_reference)
     
     if not script_reference or not info.script_instance or not info.script_language:
         return None

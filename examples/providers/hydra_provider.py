@@ -12,8 +12,8 @@ def main():
     # Gọi thử Init (nếu head chưa mở)
     print("📢 Sending Init command...")
     provider.connect()
-    provider.init()
-
+    utxos = provider.fetch_utxos()
+    print(utxos)
     print("📦 Fetching snapshot UTxOs...")
     # print("UTxOs:", utxos)
 

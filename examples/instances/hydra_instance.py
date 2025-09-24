@@ -1,180 +1,66 @@
+from blockfrost import ApiUrls
+from pycardano import (
+    Address,
+    BlockFrostChainContext,
+    Network,
+    PaymentSigningKey,
+    PaymentVerificationKey,
+    StakeSigningKey,
+    StakeVerificationKey,
+    TransactionBuilder,
+    Value,
+)
 
-class HydraProvider:
-    """A provider for interacting with Hydra Heads, implementing fetcher and submitter functionality for Cardano layer-2 scaling."""
-    def __init__(self, httpUrl: str, history: bool = False, address: Optional[str] = None, wsUrl: Optional[str] = None):
-        """
-        Initialize the HydraProvider with connection details.
+from hydrano import HydraInstance, HydraProvider
+from hydrano.providers import BlockfrostProvider
 
-        Args:
-            httpUrl (str): The base URL for HTTP requests to the Hydra node (e.g., 'http://123.45.67.890:4001').
-            history (bool, optional): Whether to enable history tracking. Defaults to False.
-            address (str, optional): The address to associate with the connection. Defaults to None.
-            wsUrl (str, optional): The WebSocket URL for real-time communication. Defaults to None (derived from httpUrl).
-        """
-        self._eventEmitter = AsyncIOEventEmitter()
-        self._connection = HydraConnection(httpUrl, self._eventEmitter, history, address, wsUrl)
-        self._status = hydraStatus.DISCONNECTED
-        self._session = aiohttp.ClientSession(base_url=httpUrl)
+http_url ="http://194.195.87.66:4002"
+project_id="previewdbVDuvrQuSQ96poPN7ZmAZIHEIIPt7y1"
 
+hydra_provider = HydraProvider(
+    http_url=http_url
+)
+blockfrost_provider = BlockfrostProvider(
+    project_id=project_id, 
+    base_url=ApiUrls.preview.value
+)
+hydra_instance = HydraInstance(
+    hydra_provider=hydra_provider, 
+    fetcher=blockfrost_provider,
+    submitter=blockfrost_provider
+)
 
-    async def fetchAddressUTxOs(self, address: str) -> List[UTxO]:
-        """
-        Fetches unspent transaction outputs (UTxOs) for a given address.
+network = Network.TESTNET
+context = BlockFrostChainContext(
+    project_id=project_id, 
+    base_url=ApiUrls.preview.value
+)
 
-        Args:
-            address (str): The Cardano address to fetch UTxOs for.
+payment_signing_key = PaymentSigningKey.load("payment.skey")
+payment_verification_key = PaymentVerificationKey.from_signing_key(payment_signing_key)
 
-        Returns:
-            List[UTxO]: A list of UTxOs associated with the address.
+stake_signing_key = StakeSigningKey.load("stake.skey")
+stake_verification_key = StakeVerificationKey.from_signing_key(stake_signing_key)
 
-        Note:
-            Filters UTxOs from the snapshot obtained via subscribeSnapshotUtxo.
-        """
-        utxos = await self.fetchUTxOs()
-        return [utxo for utxo in utxos if utxo.output.address == address]
+payment_address = Address(
+    payment_part=payment_verification_key.hash(),
+    staking_part=stake_verification_key.hash(),
+    network=network
+)
 
-    async def fetchProtocolParameters(self, epoch: Optional[float] = None) -> Protocol:
-        """
-        Fetches the latest protocol parameters from the Hydra node.
+print(f"Payment Address: {payment_address}")
 
-        Args:
-            epoch (float, optional): The epoch number to query (defaults to None, uses latest).
+utxos = context.utxos(payment_address)
+if not utxos:
+    raise ValueError(f"Không tìm thấy UTxO cho địa chỉ {payment_address}")
 
-        Returns:
-            Protocol: The protocol parameters for the specified or latest epoch.
+# In UTxO để kiểm tra
+print("Danh sách UTxO:")
+# for utxo in utxos:
+    # print(utxo)
 
-        Note:
-            Delegates to subscribeProtocolParameters for implementation.
-        """
-        return await self.subscribeProtocolParameters()
+commit_funds_unsigned_tx =  hydra_instance.commit_funds(transaction_id="8b77626b8ac3eae750a483e61fe37eff34680b031cda71db9da7bc619b66974e", index=3)
 
-    async def fetchUTxOs(self, hash: Optional[str] = None, index: Optional[int] = None) -> List[UTxO]:
-        """
-        Fetches UTxOs, optionally filtered by transaction hash and output index.
-
-        Args:
-            hash (str, optional): The transaction hash to filter UTxOs by. Defaults to None (no filter).
-            index (int, optional): The output index to filter UTxOs by. Defaults to None (no filter).
-
-        Returns:
-            List[UTxO]: A list of UTxOs matching the criteria.
-        """
-        snapshotUTxOs = await self.subscribeSnapshotUtxo()
-        outputs = [
-            utxo for utxo in snapshotUTxOs
-            if hash is None or utxo.input.txHash == hash
-        ]
-        if index is not None:
-            outputs = [utxo for utxo in outputs if utxo.input.outputIndex == index]
-        return outputs
-
-    async def submitTx(self, tx: str) -> str:
-        """
-        Submits a transaction to the Hydra node and waits for validation.
-
-        Args:
-            tx (str): The transaction in CBOR hex format.
-
-        Returns:
-            str: The transaction ID if valid.
-
-        Raises:
-            Exception: If the transaction is invalid or an error occurs.
-        """
-        try:
-            await self.newTx(tx, "Witnessed Tx ConwayEra")
-            loop = asyncio.get_event_loop()
-            future = loop.create_future()
-
-            def on_message(message):
-                if message.tag == "TxValid" and message.transaction.cborHex == tx:
-                    future.set_result(message.transaction.txId)
-                elif message.tag == "TxInvalid" and message.transaction.cborHex == tx:
-                    future.set_exception(Exception(str(message.validationError)))
-
-            self.onMessage(on_message)
-            return await future
-        except Exception as e:
-            raise parseHttpError(e)
-
-
-    async def newTx(self, cborHex: str, type: str, description: str = "", txId: Optional[str] = None):
-        """
-        Submits a transaction through the Hydra Head, broadcast only if valid.
-
-        Args:
-            cborHex (str): The base16-encoded CBOR transaction data.
-            type (str): Transaction type ('Tx ConwayEra', 'Unwitnessed Tx ConwayEra', or 'Witnessed Tx ConwayEra').
-            description (str, optional): A description of the transaction. Defaults to empty string.
-            txId (str, optional): The transaction ID. Defaults to None.
-        """
-        transaction = hydraTransaction(type, description, cborHex, txId)
-        payload = {"tag": "NewTx", "transaction": vars(transaction)}
-        await self._connection.send(payload)
-
-    async def subscribeCommit(self):
-        """
-        Subscribes to commit transaction events (drafted commits).
-
-        Returns:
-            Any: The commit data.
-
-        Note:
-            TODO: Implement subscription logic (currently a placeholder).
-        """
-        return await self.get("/commit")
-
-    async def buildCommits(self):
-        """
-        Retrieves a list of pending deposit transaction IDs.
-
-        Returns:
-            Any: The list of commit transaction IDs.
-        """
-        return await self.get("/commits")
-
-
-    async def commitsTxId(self, headers: Dict[str, str] = {}):
-        """
-        Recovers deposited UTxOs by providing a deposit transaction ID.
-
-        Args:
-            headers (Dict[str, str], optional): Additional HTTP headers. Defaults to empty dict.
-
-        Returns:
-            Any: The response data.
-
-        Note:
-            TODO: Implement logic (currently a placeholder).
-        """
-        return await self.post("/commits/tx-id", {}, headers)
-
-    async def subscribeCommitsTxId(self):
-        """
-        Subscribes to events for recovering deposited UTxOs by transaction ID.
-
-        Returns:
-            Any: The response data.
-
-        Note:
-            TODO: Implement subscription logic (currently a placeholder).
-        """
-        return await self.get("/commits/tx-id")
-
-
-
-    async def subscribeDecommit(self):
-        """
-        Subscribes to decommit transaction events.
-
-        Returns:
-            Any: The decommit data.
-
-        Note:
-            TODO: Implement subscription logic (currently a placeholder).
-        """
-        return await self.get("/decommit")
-
-    
+print(commit_funds_unsigned_tx)
 
 

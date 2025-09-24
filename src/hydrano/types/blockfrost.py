@@ -1,10 +1,8 @@
+from argparse import Namespace
 from dataclasses import dataclass
 from typing import List, Optional
 
-@dataclass
-class BlockfrostAmount:
-    unit: str
-    quantity: str  
+BlockfrostAmount = Namespace
 
 @dataclass
 class BlockfrostOutput:
@@ -20,7 +18,7 @@ class BlockfrostOutput:
 @dataclass
 class BlockfrostInput:
     address: str
-    amount: List[BlockfrostAmount]
+    amount: List[BlockfrostAmount] 
     tx_hash: str
     output_index: int
     data_hash: Optional[str] = None

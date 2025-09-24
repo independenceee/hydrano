@@ -4,7 +4,8 @@ from pycardano import UTxO
 
 from hydrano.interfaces import IFetcher, ISubmitter
 from hydrano.providers import HydraProvider
-from hydrano.types import HydraTransaction, HydraUTxO
+from hydrano.types import HydraTransaction, HydraUTxO, hydra_utxo
+from hydrano.utils import parse_error
 
 
 class HydraInstance:
@@ -25,7 +26,7 @@ class HydraInstance:
         self.fetcher = fetcher
         self.submitter = submitter
 
-    async def __commit_to_hydra(self, payload: Any) -> str:
+    def __commit_to_hydra(self, payload: Any) -> str:
         """
         Description: Private method to build and commit a payload to the Hydra head.
         Arguments: 
@@ -33,12 +34,12 @@ class HydraInstance:
         Returns: The CBOR hex string of the commit transaction.
         Raises: Any exceptions raised by the provider's build_commit method.
         """
-        commit = await self.hydra_provider.build_commit(payload=payload, headers={
+        commit = self.hydra_provider.build_commit(payload=payload, headers={
             "Content-Type": "application/json",
         })
         return commit.get("cborHex")
 
-    async def __decommit_from_hydra(self, payload: Any) -> str:
+    def __decommit_from_hydra(self, payload: Any) -> str:
         """
         Description: Private method to publish a decommit request to the Hydra head.
         Arguments: 
@@ -46,12 +47,12 @@ class HydraInstance:
         Returns: The result of the decommit operation (e.g., CBOR hex string).
         Raises: Any exceptions raised by the provider's publish_decommit method.
         """
-        decommit = await self.hydra_provider.publish_decommit(payload=payload, headers={
+        decommit = self.hydra_provider.publish_decommit(payload=payload, headers={
             "Content-Type": "application/json",
         })
         return decommit
 
-    async def commit_funds(self, transaction_id: str, index: int) -> str:
+    def commit_funds(self, transaction_id: str, index: int) -> str:
         """
         Description: Commits funds to the Hydra head by selecting a UTxO to make available on layer 2.
         Arguments: 
@@ -60,14 +61,23 @@ class HydraInstance:
         Returns: The CBOR hex string of the commit transaction, ready to be partially signed.
         Raises:  If the specified UTxO is not found.
         """
-        utxos: List[UTxO] = await self.fetcher.fetch_utxos(transaction_id=transaction_id, index=index)
+        utxos: List[UTxO] = self.fetcher.fetch_utxos(transaction_id=transaction_id, index=index)
         if not utxos:
-            raise Exception("UTxO not found")
+            raise parse_error(Exception("UTxO not found!"))
         utxo = utxos[0]
-        hydra_utxo = await HydraUTxO(
-            address=str(utxo.output.address)
-        )
-        return await self.__commit_to_hydra({f"{transaction_id}#{index}": hydra_utxo})
+        print(utxo)
+        # value = hydra_utxo(utxo=utxo)
+        # print(value)
+        return self.__commit_to_hydra({f"{transaction_id}#{index}": {
+            "address": "addr_test1qpqx6032z6z2r0yckk62x4xmtutf7juxea386n2dn3zkv29t38xeawp38gd6r2j9thuhu72jetxqnkld8ly33h725naqzrmc2k",
+            "datum": None,
+            "datumhash": None,
+            "inlineDatum": None,
+            "referenceScript": None,
+            "value": {
+                "lovelace": 50000000
+            }
+        }})
 
     async def incremental_commit_funds(self, tx_hash: str, output_index: int) -> str:
         """

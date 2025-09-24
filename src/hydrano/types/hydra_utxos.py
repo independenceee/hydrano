@@ -1,7 +1,14 @@
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from pycardano import PlutusData, TransactionInput, TransactionOutput, UTxO, datum_hash
+from pycardano import (
+    PlutusData,
+    TransactionId,
+    TransactionInput,
+    TransactionOutput,
+    UTxO,
+    datum_hash,
+)
 
 from hydrano.types.hydra_assets import HydraAssets, hydra_assets, to_assets
 from hydrano.types.hydra_reference_script import (
@@ -25,7 +32,7 @@ class HydraUTxO:
 HydraUTxOs = Dict[str, HydraUTxO]
 
 
-async def hydra_utxo(utxo: UTxO) -> HydraUTxO:
+def hydra_utxo(utxo: UTxO) -> HydraUTxO:
     """
     Desc: Convert a pycardano UTxO to a hydraUTxO object.
     Args: utxo: A pycardano UTxO object.
@@ -36,7 +43,7 @@ async def hydra_utxo(utxo: UTxO) -> HydraUTxO:
     if utxo.output.datum and isinstance(utxo.output.datum, PlutusData):
         inline_datum_raw = utxo.output.datum.to_cbor_hex()
         inline_datum = parse_datum_cbor(inline_datum_raw)
-    
+
     return HydraUTxO(
         address=utxo.output.address,
         datum=None,  
@@ -44,8 +51,8 @@ async def hydra_utxo(utxo: UTxO) -> HydraUTxO:
         inline_datum=inline_datum,
         inline_datum_raw=inline_datum_raw,
         inline_datum_hash=str(utxo.output.datum_hash) if utxo.output.datum_hash else None,
-        reference_script=await hydra_reference_script(str(utxo.output.script) if utxo.output.script else None),
-        value=hydra_assets(utxo.output.value)
+        reference_script= hydra_reference_script(str(utxo.output.script) if utxo.output.script else None),
+        value=hydra_assets(utxo.output.amount)
     )
 
 async def hydra_utxos(utxos: List[UTxO]) -> HydraUTxOs:
@@ -70,8 +77,8 @@ def to_utxo(hydra_utxo: HydraUTxO, tx_id: str) -> UTxO:
     Raises: ValueError: If tx_id format is invalid.
     """
     try:
-        tx_hash, output_index = tx_id.split("#")
-        output_index = int(output_index)
+        transaction_id, index = tx_id.split("#")
+        index = int(index)
     except (ValueError, TypeError):
         raise ValueError("Invalid TxId Format")
     
@@ -79,8 +86,8 @@ def to_utxo(hydra_utxo: HydraUTxO, tx_id: str) -> UTxO:
 
     return UTxO(
         input=TransactionInput(
-            transaction_id=tx_hash,
-            index=output_index
+            transaction_id=TransactionId.from_primitive(transaction_id),
+            index=index
         ),
         output=TransactionOutput(
             address=hydra_utxo.address,
